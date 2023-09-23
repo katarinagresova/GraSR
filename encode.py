@@ -30,21 +30,45 @@ def load_model(model_path: str) -> MoCo:
     return net
 
 
-def get_ca_coordinate(pdb_path: str) -> list:
+def get_ca_coordinate(fp: str, fileformat="guess") -> list:
     """
     Get coordinates of alpha carbon atoms in the given pdb file
-    :param pdb_path: Path of a pdb file
+    :param fp: Path of a protein file
+    :param fileformat: Format of a file. Supported options: "guess", "pdb", "mmcif" and "coords".
     :return: List of Ca coordinates
     """
-    s = PDBParser().get_structure('protein', pdb_path)
-    atom_ids = ('CA',)
-    fea = []
-    for chain in s[0]:
-        for res in chain:
-            for ai in atom_ids:
-                if ai in res:
-                    fea.append(res[ai].coord)
-    return fea
+    if fileformat == "guess":
+        chosen_format = "pdb"
+        file_ext = os.path.splitext(fp)[1].lower()
+        if file_ext == ".cif" or file_ext == ".mmcif":
+            chosen_format = "mmcif"
+    else:
+        chosen_format = fileformat
+
+    coords = []
+    if chosen_format == "pdb" or chosen_format == "mmcif" or chosen_format == "mmtf":
+        if chosen_format == "pdb":
+            from Bio.PDB.PDBParser import PDBParser
+            parser = PDBParser()
+            struc = parser.get_structure("", fp)
+        else:
+            from Bio.PDB.MMCIFParser import MMCIFParser
+            parser = MMCIFParser()
+            struc = parser.get_structure("", fp)
+
+        for model in struc:
+            for atom in model.get_atoms():
+                if atom.get_name() == "CA":
+                    cs = atom.get_coord()
+                    coords.append([float(cs[0]), float(cs[1]), float(cs[2])])
+            break
+    elif chosen_format == "coords":
+        with open(fp) as f:
+            for line in f.readlines():
+                coords.append([float(v) for v in line.rstrip().split()])
+    else:
+        raise ValueError("fileformat must be \"guess\", \"pdb\", \"mmcif\" or \"coords\"")
+    return coords
 
 
 def get_raw_feature_tensor(pdb_path_list: list) -> (torch.Tensor, torch.Tensor, torch.Tensor):
